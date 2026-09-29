@@ -1,0 +1,6 @@
+What is Maven :-
+Maven is a build automation and dependency management tool for Java projects.
+Maven takes your Java source code and turns it into a runnable application,
+while also managing the libraries your application needs.
+
+
