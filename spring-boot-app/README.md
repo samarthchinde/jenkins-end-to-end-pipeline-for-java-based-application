@@ -1,72 +1,307 @@
-# Spring Boot based Java web application
- 
-This is a simple Sprint Boot based Java application that can be built using Maven. Sprint Boot dependencies are handled using the pom.xml 
-at the root directory of the repository.
+# End-to-End CI/CD with Jenkins, Docker, Kubernetes and Argo CD
 
-This is a MVC architecture based application where controller returns a page with title and message attributes to the view.
+This project demonstrates an automated delivery workflow for a Java Spring Boot application. Jenkins builds the application, runs Maven and SonarQube analysis, creates a Docker image, publishes it to Docker Hub, and updates the Kubernetes deployment manifest in GitHub. Argo CD watches that Git repository and reconciles the Kubernetes cluster with the manifest stored in Git.
 
-## Execute the application locally and access it using your browser
+The goal is to connect **Continuous Integration (CI)** with **GitOps-based Continuous Delivery (CD)**, while keeping application code, image versions, and deployment configuration traceable.
 
-Checkout the repo and move to the directory
+## CI/CD Pipeline Architecture
 
-```
-git clone https://github.com/iam-veeramalla/Jenkins-Zero-To-Hero/java-maven-sonar-argocd-helm-k8s/sprint-boot-app
-cd java-maven-sonar-argocd-helm-k8s/sprint-boot-app
-```
+![End-to-End CI/CD Pipeline Architecture](images/cicd-architecture.png)
 
-Execute the Maven targets to generate the artifacts
+*The diagram above illustrates the complete workflow: GitHub source code triggers Jenkins; Jenkins builds, analyzes, tests, and publishes the Docker image; the deployment manifest is updated in GitHub; and Argo CD synchronizes the desired state to Kubernetes.*
 
-```
-mvn clean package
-```
+## Architecture
 
-The above maven target stroes the artifacts to the `target` directory. You can either execute the artifact on your local machine
-(or) run it as a Docker container.
-
-** Note: To avoid issues with local setup, Java versions and other dependencies, I would recommend the docker way. **
-
-
-### Execute locally (Java 11 needed) and access the application on http://localhost:8080
-
-```
-java -jar target/spring-boot-web.jar
-```
-
-### The Docker way
-
-Build the Docker Image
-
-```
-docker build -t ultimate-cicd-pipeline:v1 .
-```
-
-```
-docker run -d -p 8010:8080 -t ultimate-cicd-pipeline:v1
-```
-
-Hurray !! Access the application on `http://<ip-address>:8010`
-
-
-## Next Steps
-
-### Configure a Sonar Server locally
-
-```
-System Requirements
-Java 17+ (Oracle JDK, OpenJDK, or AdoptOpenJDK)
-Hardware Recommendations:
-   Minimum 2 GB RAM
-   2 CPU cores
-sudo apt update && sudo apt install unzip -y
-adduser sonarqube
-wget https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-10.4.1.88267.zip
-unzip *
-chown -R sonarqube:sonarqube /opt/sonarqube
-chmod -R 775 /opt/sonarqube
-cd /opt/sonarqube/bin/linux-x86-64
-./sonar.sh start
+```text
+Application source
+      |
+      v
+    GitHub
+      |
+      v
+    Jenkins
+      |
+      +--> Checkout / workspace preparation
+      +--> Maven build and package
+      +--> SonarQube static analysis
+      +--> Build Docker image with Jenkins build number
+      +--> Push image to Docker Hub
+      +--> Update image tag in Kubernetes manifest
+      +--> Commit and push manifest change to GitHub
+                                      |
+                                      v
+                           GitHub deployment manifests
+                                      |
+                                      v
+                                   Argo CD
+                         (watches repository and path)
+                                      |
+                           detects desired-state change
+                                      |
+                                      v
+                                 Kubernetes
+                                      |
+                            Spring Boot Deployment
+                                      |
+                                Service / NodePort
+                                      |
+                                      v
+                              Spring Boot application
 ```
 
-Hurray !! Now you can access the `SonarQube Server` on `http://<ip-address>:9000` 
+### Responsibilities of each component
 
+| Component | Role in this project |
+|---|---|
+| GitHub | Stores the application source and Kubernetes manifests. |
+| Jenkins | Automates the build, analysis, image publishing, and manifest update. |
+| Maven | Builds and packages the Spring Boot application. |
+| SonarQube | Performs static code analysis. |
+| Docker | Packages the application into a container image. |
+| Docker Hub | Stores versioned application images. |
+| Kubernetes | Runs the application Pods and exposes them through a Service. |
+| Argo CD | Implements GitOps delivery by comparing the desired state in Git with the live cluster state. |
+| Minikube | Provides the local Kubernetes environment used for deployment and testing. |
 
+## Repository layout
+
+```text
+jenkins-end-to-end-pipeline-for-java-based-application/
+├── spring-boot-app/
+│   ├── src/
+│   ├── Dockerfile
+│   ├── pom.xml
+│   └── JenkinsFile
+└── spring-boot-app-manifests/
+    ├── deployment.yml
+    └── service.yml
+```
+
+- `spring-boot-app/` contains the Spring Boot source, Maven configuration, Dockerfile, and Jenkins pipeline.
+- `spring-boot-app-manifests/deployment.yml` defines the application Deployment and container image.
+- `spring-boot-app-manifests/service.yml` exposes the application through a Kubernetes Service.
+
+The application Deployment is configured for **two replicas** and container port **8080**. The Service uses port **80** and targets container port **8080**. In the local Minikube setup, the Spring Boot Service was exposed through NodePort **30140**.
+
+## CI pipeline
+
+The Jenkins pipeline connects the build and delivery steps:
+
+1. **Workspace and source preparation** — the pipeline prepares the workspace. The checked-in pipeline has used a lightweight `echo passed`/directory-listing step while the explicit Git checkout step was commented out in one iteration; the Jenkins job or agent therefore needs to provide the expected source workspace.
+2. **Build and package** — Maven runs `mvn clean package`.
+3. **Static code analysis** — Maven invokes SonarQube analysis with the configured server URL and token.
+4. **Build the container image** — Docker builds the application image and tags it with the Jenkins build number.
+5. **Publish the image** — Jenkins pushes the tagged image to Docker Hub.
+6. **Update deployment configuration** — the pipeline replaces the image placeholder/tag in `spring-boot-app-manifests/deployment.yml`.
+7. **Commit and push the manifest** — Jenkins commits the changed manifest and pushes it to the `main` branch.
+8. **Reconcile through Argo CD** — Argo CD watches the configured Git repository, branch, and manifest directory. With automated sync enabled, it applies a changed desired state to Kubernetes.
+9. **Verify the release** — the Deployment, Pods, Service, and application endpoint are checked after reconciliation.
+
+A build-number tag makes each published image identifiable. For example, the deployment was updated to `samarthchinde/spring-boot-app:9` during testing. The manifest in Git and the live Deployment were both checked for that tag.
+
+> **CI/CD distinction:** Jenkins publishes the image and changes the desired deployment configuration in Git. Argo CD does not build the image; it deploys the state represented by the Git manifests.
+
+## Configuration and implementation notes
+
+The pipeline and cluster rely on configuration held outside the application source:
+
+- Jenkins credentials for SonarQube, Docker Hub, and GitHub access.
+- A reachable SonarQube server and the configured `SONAR_URL`.
+- Docker CLI access to the Docker daemon from the Jenkins agent.
+- A Docker Hub repository that accepts pushes from Jenkins.
+- An Argo CD Application pointing to the correct Git repository, `main` branch, and `spring-boot-app-manifests` path.
+- Kubernetes Deployment and Service manifests that match the image name, container port, labels, and selectors.
+
+Credentials should be stored in Jenkins Credentials and referenced by credential ID. Tokens, passwords, and decoded Kubernetes Secrets are not committed to Git.
+
+## Kubernetes and Argo CD operations
+
+These are the principal commands used to inspect the local deployment and troubleshoot access.
+
+### Inspect cluster resources
+
+```bash
+kubectl get pods -A
+kubectl get deployments,services
+kubectl get svc -n default
+kubectl get endpoints -n default
+```
+
+`kubectl get endpoints` helps determine whether a Service has ready Pod endpoints behind it.
+
+### Inspect Argo CD Service exposure
+
+```bash
+kubectl get svc example-argocd-server -o jsonpath='{.spec.type}{"\n"}'
+kubectl get svc example-argocd-server -o yaml
+kubectl get svc -n default
+```
+
+The Argo CD server Service was inspected when its browser endpoint was not reachable. Its Service type and port mapping need to match the chosen access method. A NodePort change was also investigated using a Kubernetes Service patch; the exact Service name and namespace must match the installed Argo CD resources.
+
+### Access the services in Minikube
+
+```bash
+minikube ip
+minikube service example-argocd-server -n default
+minikube service spring-boot-app-service -n default
+```
+
+`minikube service` can open or report a host URL for a Service. The generated local URL can vary between runs and environments. The Spring Boot Service used NodePort `30140`; the Argo CD server had its own Service and port configuration.
+
+### Inspect application rollout and failures
+
+```bash
+kubectl get pods -n default -o wide
+kubectl describe pod <pod-name> -n default
+kubectl logs <pod-name> -n default
+kubectl describe svc spring-boot-app-service -n default
+kubectl get endpoints spring-boot-app-service -n default
+```
+
+These commands expose scheduling events, image-pull errors, container startup failures, readiness issues, Service selectors, and missing endpoints.
+
+### Edit Kubernetes resources on CachyOS
+
+The local workstation ran CachyOS Linux with the Fish shell. The Kubernetes editor was configured to use Vim:
+
+```fish
+command -v vim
+command -v vi
+set -gx KUBE_EDITOR vim
+```
+
+To persist the editor setting in Fish:
+
+```fish
+echo 'set -gx KUBE_EDITOR vim' >> ~/.config/fish/config.fish
+```
+
+This allows `kubectl edit` to open resources in Vim when the editor is available.
+
+## Troubleshooting record
+
+The following issues were encountered during implementation and investigated with the commands below.
+
+### 1. Jenkins pipeline and Git operations
+
+**Observed issue:** The pipeline could not reliably find the Jenkinsfile or access the Git repository in earlier runs. One checkout attempt returned an SSH public-key error (`Permission denied (publickey)`), and the explicit checkout step was commented out during a later pipeline iteration.
+
+**Checks and commands:**
+
+```bash
+ls -ltr
+git status
+git remote -v
+git branch
+```
+
+The Jenkins job's script path was set in relation to `spring-boot-app/JenkinsFile`. Git access depends on the repository URL and the configured Jenkins credentials; SSH access additionally requires a registered public key and the matching private key available to Jenkins.
+
+### 2. Argo CD did not automatically sync after a Jenkins build
+
+**Observed issue:** Jenkins ran again and pushed a new Git commit, but Argo CD did not immediately show the expected automatic synchronization. During the investigation, the image tag was checked in both places: the Git manifest contained `samarthchinde/spring-boot-app:9`, and the live Kubernetes Deployment also showed `samarthchinde/spring-boot-app:9`.
+
+**What this established:** Matching image tags alone do not prove that Argo CD detected a new desired-state change. If Git already contains the same manifest value, a new Jenkins build may not create a meaningful manifest diff. The Argo CD Application source repository, target revision, manifest path, automated-sync setting, and application sync status are also relevant.
+
+**Checks:**
+
+```bash
+git log -n 5 --oneline
+grep -n "image:" spring-boot-app-manifests/deployment.yml
+kubectl get deployment -n default -o wide
+kubectl get pods -n default
+```
+
+The Argo CD Application was also inspected in the UI to compare its repository, revision, path, sync status, and health status with the Git repository and live cluster.
+
+### 3. Argo CD browser access and Service type
+
+**Observed issue:** Argo CD was installed in the local Kubernetes environment, but its browser endpoint was not consistently accessible. The server Service configuration was checked, and NodePort exposure and Minikube service access were investigated.
+
+**Commands used:**
+
+```bash
+kubectl get svc example-argocd-server -o jsonpath='{.spec.type}{"\n"}'
+kubectl get svc example-argocd-server -o yaml
+kubectl get svc -n default
+kubectl get endpoints -n default
+minikube service example-argocd-server -n default
+```
+
+Service access depends on the actual Service type, its ports, the health of its backing Pods, and the local cluster's networking. A URL printed by Minikube is environment-specific rather than a permanent public endpoint.
+
+### 4. Spring Boot Service access
+
+**Observed issue:** Argo CD was not the only endpoint that needed validation; the deployed Spring Boot application also had to be reachable outside the Pod.
+
+**Commands used:**
+
+```bash
+kubectl get svc -n default
+kubectl describe svc spring-boot-app-service -n default
+kubectl get endpoints spring-boot-app-service -n default
+minikube ip
+minikube service spring-boot-app-service -n default
+```
+
+The Service mapped port `80` to target port `8080` and used NodePort `30140` in the local setup. Verifying endpoints alongside the Service helped distinguish a networking issue from a Deployment or Pod readiness issue.
+
+### 5. Pods in Pending or Terminating states
+
+**Observed issue:** During the local cluster work, Pods were observed in `Pending` or `Terminating` states. These states can prevent both the Argo CD interface and application from being available even when the Service definition exists.
+
+**Commands used:**
+
+```bash
+kubectl get pods -A -o wide
+kubectl describe pod <pod-name> -n default
+kubectl get events -n default --sort-by=.lastTimestamp
+kubectl get nodes
+```
+
+The relevant evidence is in Pod events, node status, scheduling messages, image-pull results, and container logs. A Service URL alone does not establish that the workload is healthy.
+
+### 6. SonarQube binary download returned HTTP 403
+
+**Observed issue:** While setting up SonarQube on an Ubuntu server, a direct `wget` request to a SonarSource binary download URL returned `403 Forbidden`, despite the connection being established.
+
+**Troubleshooting context:** This was a download-request rejection rather than proof of a general network outage. The download URL or distribution method needed to be checked before continuing installation.
+
+## Verification checklist
+
+A successful end-to-end run is represented by the following evidence:
+
+- Jenkins completes the Maven build and SonarQube analysis stages.
+- Docker builds and pushes the expected versioned image.
+- GitHub records the updated image tag in `spring-boot-app-manifests/deployment.yml`.
+- Argo CD tracks the correct repository, branch, and manifest path.
+- The Argo CD Application reaches `Synced` and `Healthy` when the cluster and workload are healthy.
+- Kubernetes has ready application Pods and Service endpoints.
+- The Spring Boot application is reachable through the configured Minikube Service route.
+
+## Project screenshots
+
+The following screenshots provide visual evidence of the project setup and deployment. They are stored in the repository's `images/` directory.
+
+### Argo CD
+![Argo CD application](images/argocd.png)
+
+### SonarQube analysis
+![SonarQube analysis](images/sonarqube.png)
+
+### Kubernetes deployment
+![Kubernetes deployment](images/kubernetes.png)
+
+### Deployed Spring Boot application
+![Deployed Spring Boot application](images/deployed-application.png)
+
+A short demonstration recording can also be added to show the Jenkins pipeline execution, Docker image publishing, Git manifest update, Argo CD synchronization, and running Kubernetes workload.
+
+## Skills demonstrated
+
+**Jenkins Pipeline · Maven · SonarQube · Docker · Docker Hub · GitHub · Kubernetes · Minikube · Argo CD · GitOps · Linux · Fish shell · CI/CD troubleshooting**
+
+## Repository
+
+[GitHub — samarthchinde/jenkins-end-to-end-pipeline-for-java-based-application](https://github.com/samarthchinde/jenkins-end-to-end-pipeline-for-java-based-application)
