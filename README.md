@@ -4,6 +4,8 @@ This project demonstrates an automated delivery workflow for a Java Spring Boot 
 
 The goal is to connect **Continuous Integration (CI)** with **GitOps-based Continuous Delivery (CD)**, while keeping application code, image versions, and deployment configuration traceable.
 
+![alt text](228301952-abc02ca2-9942-4a67-8293-f76647b6f9d8-1.png)
+
 ## Architecture
 
 ```text
