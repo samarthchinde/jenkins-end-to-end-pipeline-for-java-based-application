@@ -291,7 +291,7 @@ The following screenshots provide visual evidence of the project setup and deplo
 ![SonarQube analysis](images/sonarqube.png)
 
 ### Kubernetes deployment
-![Kubernetes deployment](images/kubernetes.png)
+![Kubernetes deployment](images/kuberneties.png)
 
 ### Deployed Spring Boot application
 ![Deployed Spring Boot application](images/deployed-application.png)
