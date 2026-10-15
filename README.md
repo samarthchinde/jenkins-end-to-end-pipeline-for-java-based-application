@@ -4,7 +4,11 @@ This project demonstrates an automated delivery workflow for a Java Spring Boot 
 
 The goal is to connect **Continuous Integration (CI)** with **GitOps-based Continuous Delivery (CD)**, while keeping application code, image versions, and deployment configuration traceable.
 
-![alt text](228301952-abc02ca2-9942-4a67-8293-f76647b6f9d8-1.png)
+## CI/CD Pipeline Architecture
+
+![End-to-End CI/CD Pipeline Architecture](images/cicd-architecture.png)
+
+*The diagram above illustrates the complete workflow: GitHub source code triggers Jenkins; Jenkins builds, analyzes, tests, and publishes the Docker image; the deployment manifest is updated in GitHub; and Argo CD synchronizes the desired state to Kubernetes.*
 
 ## Architecture
 
@@ -276,9 +280,23 @@ A successful end-to-end run is represented by the following evidence:
 - Kubernetes has ready application Pods and Service endpoints.
 - The Spring Boot application is reachable through the configured Minikube Service route.
 
-## Project evidence
+## Project screenshots
 
-Screenshots and a short demonstration recording accompany this repository to show the pipeline execution, SonarQube analysis, Docker Hub image, Git manifest update, Argo CD application status, and running Kubernetes workload.
+The following screenshots provide visual evidence of the project setup and deployment. They are stored in the repository's `images/` directory.
+
+### Argo CD
+![Argo CD application](images/argocd.png)
+
+### SonarQube analysis
+![SonarQube analysis](images/sonarqube.png)
+
+### Kubernetes deployment
+![Kubernetes deployment](images/kubernetes.png)
+
+### Deployed Spring Boot application
+![Deployed Spring Boot application](images/deployed-application.png)
+
+A short demonstration recording can also be added to show the Jenkins pipeline execution, Docker image publishing, Git manifest update, Argo CD synchronization, and running Kubernetes workload.
 
 ## Skills demonstrated
 
